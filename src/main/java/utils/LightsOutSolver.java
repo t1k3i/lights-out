@@ -3,10 +3,13 @@ package utils;
 import dtos.SolutionStepAddDTO;
 import exceptions.not_solvable.NotSolvableException;
 import jakarta.ws.rs.BadRequestException;
+import org.jboss.logging.Logger;
 
 import java.util.List;
 
 public class LightsOutSolver {
+    private static final Logger LOG = Logger.getLogger(LightsOutSolver.class);
+
     public LightsOutSolver() {}
 
     private static void checkIfValidBoard(String board) {
@@ -17,6 +20,7 @@ public class LightsOutSolver {
     }
 
     public static void checkIfSolvable(String board) {
+        long startTime = System.nanoTime();
         checkIfValidBoard(board);
 
         StringBuilder flippedBoard = new StringBuilder();
@@ -46,10 +50,18 @@ public class LightsOutSolver {
             startingPos[i] = board.charAt(i) - '0';
         }
 
-        checkIfSolvableLinearEquation(allMoves, startingPos);
+        try {
+            int moves = checkIfSolvableLinearEquation(allMoves, startingPos);
+            long duration = System.nanoTime() - startTime;
+            LOG.infof("Problem solvable in %d moves (time: %d ns)", moves, duration);
+        } catch (NotSolvableException e) {
+            long duration = System.nanoTime() - startTime;
+            LOG.warnf("Problem is not solvable (time: %d ns)", duration);
+            throw e;
+        }
     }
 
-    private static void checkIfSolvableLinearEquation(int[][] a, int[] b) {
+    private static int checkIfSolvableLinearEquation(int[][] a, int[] b) {
         int size = a.length;
         for (int column = 0; column < size; column++) {
             int pivot = column;
@@ -77,9 +89,21 @@ public class LightsOutSolver {
             }
         }
 
-        for (int i = size - 1; i >= 0; i--)
-            if (a[i][i] == 0 && b[i] != 0)
-                throw new NotSolvableException("Problem not solvable");
+        int[] x = new int[size];
+        for (int i = size - 1; i >= 0; i--) {
+            if (a[i][i] == 0) {
+                if (b[i] != 0) throw new NotSolvableException("Problem not solvable");
+                continue;
+            }
+            x[i] = b[i];
+            for (int j = i + 1; j < size; j++)
+                x[i] ^= (a[i][j] & x[j]);
+        }
+
+        int moves = 0;
+        for (int value : x)
+            if (value == 1) moves++;
+        return moves;
     }
 
     public static boolean checkIfCorrectSolution(String problemDescription, List<SolutionStepAddDTO> solutionStepAddDTOS) {
